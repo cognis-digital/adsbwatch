@@ -1,2 +1,3 @@
 2024-06-09T14:34:14  refactor(deps): pin the test dependencies
 2024-06-26T09:51:21  ci(cache): add color + severity icons
+2024-07-13T16:08:28  fix(report): trim whitespace in parsed fields
