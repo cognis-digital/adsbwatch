@@ -4,3 +4,4 @@
 2024-08-01T11:25:35  test: add edge case
 2024-08-18T18:42:42  style(core): memoize repeated lookups
 2024-09-05T13:59:49  style(core): add pagination to large reports
+2024-09-23T08:16:56  feat(output): add a fast path for the common case
