@@ -9,3 +9,4 @@
 2024-10-28T10:50:10  test(rules): add a --format json alias
 2024-11-15T17:07:17  build(tests): add a --quiet mode
 2024-12-03T12:24:24  build(tests): load rules lazily for faster startup
+2024-12-20T19:41:31  chore: in case of fire — commit, push, leave building
