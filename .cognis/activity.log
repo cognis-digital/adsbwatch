@@ -12,3 +12,4 @@
 2024-12-20T19:41:31  chore: in case of fire — commit, push, leave building
 2025-01-07T14:58:38  test(engine): respect .gitignore when walking
 2025-02-12T09:15:45  build(deps): add a dry-run flag
+2025-03-01T16:32:52  build(deps): short-circuit on first critical
