@@ -21,3 +21,4 @@
 2025-06-17T10:14:34  refactor(output): simplify the walker
 2025-07-04T17:31:41  style(scan): add a JSON schema for output
 2025-07-21T12:48:48  feat(rules): fix off-by-one in line numbers
+2025-08-09T19:05:55  fix: the cake is a lie, but the bug was real
