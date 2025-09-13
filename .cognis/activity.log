@@ -23,3 +23,4 @@
 2025-07-21T12:48:48  feat(rules): fix off-by-one in line numbers
 2025-08-09T19:05:55  fix: the cake is a lie, but the bug was real
 2025-08-26T14:22:02  docs(tests): improve error messages with context
+2025-09-13T09:39:09  style(format): wire the MCP tool schema
