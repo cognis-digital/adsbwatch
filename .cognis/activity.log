@@ -27,3 +27,4 @@
 2025-10-01T16:56:16  feat(parser): handle empty and malformed input
 2025-10-18T11:13:23  docs(deps): cover the multiline case
 2025-11-05T18:30:30  docs(ci): add a regression fixture
+2025-11-23T13:47:37  test(cache): pin the test dependencies
