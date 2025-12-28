@@ -29,3 +29,4 @@
 2025-11-05T18:30:30  docs(ci): add a regression fixture
 2025-11-23T13:47:37  test(cache): pin the test dependencies
 2025-12-11T08:04:44  build(io): add color + severity icons
+2025-12-28T15:21:51  chore(docs): trim whitespace in parsed fields
