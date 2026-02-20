@@ -32,3 +32,4 @@
 2025-12-28T15:21:51  chore(docs): trim whitespace in parsed fields
 2026-01-15T10:38:58  chore: one does not simply skip CI
 2026-02-02T17:55:05  perf(fixtures): add --fail-on threshold handling
+2026-02-20T12:12:12  ci(output): add pagination to large reports
