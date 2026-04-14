@@ -35,3 +35,4 @@
 2026-02-20T12:12:12  ci(output): add pagination to large reports
 2026-03-10T19:29:19  fix(scan): add a fast path for the common case
 2026-03-27T14:46:26  fix: 60% of the time, it works every time
+2026-04-14T09:03:33  refactor(cli): assert exit codes in tests
