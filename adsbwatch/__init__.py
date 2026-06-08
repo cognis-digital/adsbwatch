@@ -1,2 +1,11 @@
-"""ADSBWATCH — Analyze an ADS-B feed/CSV for anomalies: callsign spoofing, squawk 7500/7600/7700, and unusual loiter patterns."""
-__version__ = "0.1.0"
+"""adsbwatch — part of the Cognis Neural Suite."""
+try:  # re-export the tool's public API + identity from core
+    from adsbwatch.core import *  # noqa: F401,F403
+except Exception:  # pragma: no cover
+    pass
+try:
+    from adsbwatch.core import TOOL_NAME, TOOL_VERSION
+except Exception:  # pragma: no cover
+    TOOL_NAME = "adsbwatch"
+    TOOL_VERSION = "0.1.0"
+__version__ = TOOL_VERSION
