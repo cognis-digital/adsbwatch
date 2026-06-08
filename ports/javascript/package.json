@@ -1,0 +1,10 @@
+{
+  "name": "@cognis/adsbwatch",
+  "version": "0.2.0",
+  "description": "JavaScript port of adsbwatch (Cognis Neural Suite)",
+  "bin": {
+    "adsbwatch": "index.js"
+  },
+  "license": "LicenseRef-COCL-1.0",
+  "type": "module"
+}
