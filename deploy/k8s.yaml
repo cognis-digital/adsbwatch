@@ -1,0 +1,23 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: adsbwatch, labels: { app: adsbwatch } }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: adsbwatch } }
+  template:
+    metadata: { labels: { app: adsbwatch } }
+    spec:
+      containers:
+        - name: adsbwatch
+          image: ghcr.io/cognis-digital/adsbwatch:latest
+          ports: [{ containerPort: 8000 }]
+          resources:
+            requests: { cpu: "50m", memory: "64Mi" }
+            limits: { cpu: "500m", memory: "256Mi" }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: adsbwatch }
+spec:
+  selector: { app: adsbwatch }
+  ports: [{ port: 80, targetPort: 8000 }]
