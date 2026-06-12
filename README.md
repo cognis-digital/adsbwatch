@@ -16,7 +16,7 @@
 </div>
 
 ```bash
-pip install cognis-adsbwatch
+pip install "git+https://github.com/cognis-digital/adsbwatch.git"
 adsbwatch scan .            # → prioritized findings in seconds
 ```
 
@@ -49,7 +49,7 @@ Analyze an ADS-B feed/CSV for anomalies: callsign spoofing, squawk 7500/7600/770
 ## Quick start
 
 ```bash
-pip install cognis-adsbwatch
+pip install "git+https://github.com/cognis-digital/adsbwatch.git"
 adsbwatch --version
 adsbwatch scan .                       # scan current project
 adsbwatch scan . --format json         # machine-readable

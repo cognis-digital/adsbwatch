@@ -20,7 +20,7 @@ import math
 import re
 from dataclasses import dataclass, field, asdict
 from datetime import datetime, timezone
-from typing import Any, Iterable, Optional
+from typing import Iterable, Optional
 
 # ---------------------------------------------------------------------------
 # Reference data
