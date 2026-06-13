@@ -20,6 +20,12 @@ pip install "git+https://github.com/cognis-digital/adsbwatch.git"
 adsbwatch scan .            # → prioritized findings in seconds
 ```
 
+<!-- cognis:layman:start -->
+## What is this?
+
+adsbwatch reads ADS-B aircraft tracking data — the same position reports your local receiver or a service like FlightAware captures — and flags suspicious behavior automatically. It looks for aircraft broadcasting emergency codes (hijack, radio failure, general distress), planes that appear to change their identity mid-flight (a sign of spoofing), and aircraft circling in tight patterns that suggest surveillance or loitering. Point it at a CSV feed and it returns a ranked list of findings in seconds, suitable for security analysts, aviation enthusiasts, or anyone running a local receiver who wants alerts without manual review.
+<!-- cognis:layman:end -->
+
 ## Contents
 
 - [Why adsbwatch?](#why) · [Features](#features) · [Quick start](#quick-start) · [Example](#example) · [Architecture](#architecture) · [AI stack](#ai-stack) · [How it compares](#how-it-compares) · [Integrations](#integrations) · [Install anywhere](#install-anywhere) · [Related](#related) · [Contributing](#contributing)
@@ -46,6 +52,42 @@ Analyze an ADS-B feed/CSV for anomalies: callsign spoofing, squawk 7500/7600/770
 <div align="right"><a href="#top">↑ back to top</a></div>
 
 <a name="quick-start"></a>
+<!-- cognis:install:start -->
+## Install
+
+`adsbwatch` is source-available (not published to PyPI) — every method below installs
+straight from GitHub. Pick whichever you prefer; the one-line scripts auto-detect
+the best tool available on your machine.
+
+**One-liner (Linux / macOS):**
+```sh
+curl -fsSL https://raw.githubusercontent.com/cognis-digital/adsbwatch/HEAD/install.sh | sh
+```
+
+**One-liner (Windows PowerShell):**
+```powershell
+irm https://raw.githubusercontent.com/cognis-digital/adsbwatch/HEAD/install.ps1 | iex
+```
+
+**Or install manually — any one of:**
+```sh
+pipx install "git+https://github.com/cognis-digital/adsbwatch.git"     # isolated (recommended)
+uv tool install "git+https://github.com/cognis-digital/adsbwatch.git"  # uv
+pip install "git+https://github.com/cognis-digital/adsbwatch.git"      # pip
+```
+
+**From source:**
+```sh
+git clone https://github.com/cognis-digital/adsbwatch.git
+cd adsbwatch && pip install .
+```
+
+Then run:
+```sh
+adsbwatch --help
+```
+<!-- cognis:install:end -->
+
 ## Quick start
 
 ```bash
