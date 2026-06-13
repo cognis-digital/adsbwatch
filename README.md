@@ -20,6 +20,32 @@ pip install cognis-adsbwatch
 adsbwatch scan .            # → prioritized findings in seconds
 ```
 
+## Usage — step by step
+
+`adsbwatch` runs defensive OSINT analysis of an ADS-B feed (CSV) for anomalies — emergency squawks, callsign spoofing, and loiter patterns.
+
+1. **Install** (Python 3.10+):
+   ```bash
+   pip install -e .            # or: pipx install adsbwatch
+   ```
+2. **Scan an ADS-B CSV feed** (human-readable table):
+   ```bash
+   adsbwatch scan feed.csv
+   ```
+3. **Tune loiter detection** (track radius, cumulative turn, min points):
+   ```bash
+   adsbwatch scan feed.csv --loiter-radius 5 --loiter-turn 270 --loiter-points 6
+   ```
+4. **Read the output** as JSON for piping / alerting:
+   ```bash
+   adsbwatch scan feed.csv --format json | jq '.anomalies'
+   ```
+5. **Drive alerting in CI/cron** — exit `2` when anomalies are found, `0` when clean, `1` on parse error:
+   ```yaml
+   - run: pip install -e . && adsbwatch scan feed.csv   # exit 2 => trigger alert
+   ```
+
+
 ## Contents
 
 - [Why adsbwatch?](#why) · [Features](#features) · [Quick start](#quick-start) · [Example](#example) · [Architecture](#architecture) · [AI stack](#ai-stack) · [How it compares](#how-it-compares) · [Integrations](#integrations) · [Install anywhere](#install-anywhere) · [Related](#related) · [Contributing](#contributing)
