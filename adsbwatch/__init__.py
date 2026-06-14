@@ -1,11 +1,21 @@
 """adsbwatch — part of the Cognis Neural Suite."""
-try:  # re-export the tool's public API + identity from core
-    from adsbwatch.core import *  # noqa: F401,F403
-except Exception:  # pragma: no cover
-    pass
-try:
-    from adsbwatch.core import TOOL_NAME, TOOL_VERSION
-except Exception:  # pragma: no cover
-    TOOL_NAME = "adsbwatch"
-    TOOL_VERSION = "0.1.0"
+# Re-export the tool's public API + identity from core.
+# Using explicit imports (not *) so that import errors surface clearly rather
+# than being silently swallowed.
+from adsbwatch.core import (  # noqa: F401
+    TOOL_NAME,
+    TOOL_VERSION,
+    SQUAWK_MEANINGS,
+    EARTH_RADIUS_NM,
+    Observation,
+    Anomaly,
+    AnalysisResult,
+    parse_records,
+    parse_csv,
+    haversine_nm,
+    analyze,
+    scan,
+    to_json,
+)
+
 __version__ = TOOL_VERSION

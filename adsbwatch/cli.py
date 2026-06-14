@@ -81,6 +81,27 @@ def main(argv: Optional[list] = None) -> int:
         parser.print_help()
         return 1
 
+    # Validate tuning parameters before touching the file so the error message
+    # is clear and the exit code is consistent (1 = usage/parse error).
+    if args.loiter_points < 2:
+        print(
+            f"error: --loiter-points must be >= 2, got {args.loiter_points}",
+            file=sys.stderr,
+        )
+        return 1
+    if args.loiter_radius <= 0:
+        print(
+            f"error: --loiter-radius must be > 0, got {args.loiter_radius}",
+            file=sys.stderr,
+        )
+        return 1
+    if args.loiter_turn <= 0:
+        print(
+            f"error: --loiter-turn must be > 0, got {args.loiter_turn}",
+            file=sys.stderr,
+        )
+        return 1
+
     try:
         observations = parse_csv(args.feed)
     except FileNotFoundError:
@@ -90,12 +111,16 @@ def main(argv: Optional[list] = None) -> int:
         print(f"error: failed to parse feed: {e}", file=sys.stderr)
         return 1
 
-    result = analyze(
-        observations,
-        loiter_min_points=args.loiter_points,
-        loiter_radius_nm=args.loiter_radius,
-        loiter_min_turn_deg=args.loiter_turn,
-    )
+    try:
+        result = analyze(
+            observations,
+            loiter_min_points=args.loiter_points,
+            loiter_radius_nm=args.loiter_radius,
+            loiter_min_turn_deg=args.loiter_turn,
+        )
+    except ValueError as e:
+        print(f"error: invalid analysis parameter: {e}", file=sys.stderr)
+        return 1
 
     if args.format == "json":
         print(json.dumps(result.to_dict(), indent=2))

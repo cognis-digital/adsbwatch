@@ -16,11 +16,19 @@ Expected CSV columns (header row, case-insensitive, extra columns ignored):
 from __future__ import annotations
 
 import csv
+import json
 import math
 import re
 from dataclasses import dataclass, field, asdict
 from datetime import datetime, timezone
 from typing import Iterable, Optional
+
+# ---------------------------------------------------------------------------
+# Package identity
+# ---------------------------------------------------------------------------
+
+TOOL_NAME = "adsbwatch"
+TOOL_VERSION = "0.1.0"
 
 # ---------------------------------------------------------------------------
 # Reference data
@@ -151,7 +159,13 @@ def parse_records(rows: Iterable[dict]) -> list:
 
 
 def parse_csv(path: str) -> list:
-    """Read a CSV file of ADS-B observations into a list of Observation."""
+    """Read a CSV file of ADS-B observations into a list of Observation.
+
+    Raises FileNotFoundError if *path* does not exist, ValueError on parse
+    problems.  Returns an empty list for a header-only (no data rows) file.
+    """
+    if not path:
+        raise ValueError("feed path must not be empty")
     with open(path, newline="", encoding="utf-8") as fh:
         reader = csv.DictReader(fh)
         if reader.fieldnames is None:
@@ -169,6 +183,9 @@ def haversine_nm(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     dphi = math.radians(lat2 - lat1)
     dlmb = math.radians(lon2 - lon1)
     a = math.sin(dphi / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dlmb / 2) ** 2
+    # Clamp to [0, 1] to guard against floating-point values marginally outside
+    # the valid domain of asin (can happen at identical or antipodal points).
+    a = max(0.0, min(1.0, a))
     return 2 * EARTH_RADIUS_NM * math.asin(math.sqrt(a))
 
 
@@ -311,7 +328,24 @@ def _detect_loiter(obs_by_ac: dict, *, min_points: int, radius_nm: float,
 def analyze(observations: list, *, loiter_min_points: int = 6,
             loiter_radius_nm: float = 5.0,
             loiter_min_turn_deg: float = 270.0) -> AnalysisResult:
-    """Run all detectors over a list of Observation objects."""
+    """Run all detectors over a list of Observation objects.
+
+    Raises ValueError for out-of-range tuning parameters.
+    Returns an AnalysisResult with an empty anomalies list when *observations*
+    is empty.
+    """
+    if loiter_min_points < 2:
+        raise ValueError(
+            f"loiter_min_points must be >= 2, got {loiter_min_points!r}"
+        )
+    if loiter_radius_nm <= 0:
+        raise ValueError(
+            f"loiter_radius_nm must be > 0, got {loiter_radius_nm!r}"
+        )
+    if loiter_min_turn_deg <= 0:
+        raise ValueError(
+            f"loiter_min_turn_deg must be > 0, got {loiter_min_turn_deg!r}"
+        )
     obs_by_ac: dict = {}
     for o in observations:
         obs_by_ac.setdefault(o.icao, []).append(o)
@@ -334,3 +368,17 @@ def analyze(observations: list, *, loiter_min_points: int = 6,
         aircraft=len(obs_by_ac),
         anomalies=anomalies,
     )
+
+
+# ---------------------------------------------------------------------------
+# Convenience wrappers (used by mcp_server and external callers)
+# ---------------------------------------------------------------------------
+
+def scan(path: str, **kwargs) -> AnalysisResult:
+    """Parse *path* and run :func:`analyze`. Convenience wrapper for MCP/CLI."""
+    return analyze(parse_csv(path), **kwargs)
+
+
+def to_json(result: AnalysisResult) -> str:
+    """Serialise an :class:`AnalysisResult` to a JSON string."""
+    return json.dumps(result.to_dict(), indent=2)
