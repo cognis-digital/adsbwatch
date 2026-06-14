@@ -34,3 +34,6 @@ adsbwatch = "adsbwatch.cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["adsbwatch"]
+
+[tool.hatch.metadata]
+allow-direct-references = true
