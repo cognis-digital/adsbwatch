@@ -62,12 +62,30 @@ Analyze an ADS-B feed/CSV for anomalies: callsign spoofing, squawk 7500/7600/770
 <a name="features"></a>
 ## Features
 
-- ✅ Parse Records
-- ✅ Parse Csv
-- ✅ Haversine Nm
-- ✅ Analyze
+- ✅ ADS-B anomaly detection — emergency squawks (7500/7600/7700), callsign spoofing, loiter
+- ✅ **Decision support (human-in-the-loop)** — `assess`: triage, multi-sensor correlation, advisory recommendations
+- ✅ **Sensor correlation** — fuse alerts with local camera / RF / access-control logs on a timeline (evidence + pattern-of-life)
+- ✅ Data sovereignty — fully local/offline, pure standard library; nothing leaves the box
 - ✅ Runs on Linux/macOS/Windows · Docker · devcontainer
 - ✅ Ports in Python, JavaScript, Go, and Rust (`ports/`)
+
+### Decision support — the layer *above* the alert (human stays in command)
+
+The sensor layer tells you *something happened*. `adsbwatch assess` is the decision
+architecture above it — it **triages** anomalies by priority, **correlates** them with your
+other local sensors (cameras, RF logs, access control) to build an evidence picture, and
+**recommends courses of action to an operator** (log, notify, escalate to the responsible
+authority, cross-cue a camera, request ID, preserve evidence).
+
+```bash
+adsbwatch assess feed.csv --sensors local_sensors.csv      # triage + correlate + recommend
+adsbwatch assess feed.csv --format json                    # for your SOC / C2 dashboard
+```
+
+> **Boundary (by design and enforced by tests):** this is decision **support**, not decision
+> **authority**. It produces recommendations and notifications for a *person* — it has **no
+> interface to weapons, jammers, or any effector, and never acts autonomously**. Every
+> recommended action requires human authorization. Use of force stays with a human.
 
 <div align="right"><a href="#top">↑ back to top</a></div>
 

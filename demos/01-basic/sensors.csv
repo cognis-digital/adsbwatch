@@ -1,0 +1,4 @@
+timestamp,source,type,detail,lat,lon
+1700000000,camera-north,motion,Unidentified slow mover in sector N,38.95,-77.45
+1700000030,rf-log,rf_burst,2.4GHz burst coincident with loiter,38.95,-77.45
+1700000050,access-control,badge_denied,Failed badge at perimeter gate 3,,

@@ -46,6 +46,27 @@ def _render_table(result: AnalysisResult) -> str:
     return "\n".join(lines)
 
 
+def _render_assessment(report: dict) -> str:
+    lines = [f"ADSBWATCH decision support  incidents={report['incident_count']}",
+             f"scope: {report['scope']}",
+             f"** human authorization required for any action **",
+             "-" * 72]
+    if not report["incidents"]:
+        lines.append("No incidents to assess.")
+        return "\n".join(lines)
+    for i, inc in enumerate(report["incidents"], 1):
+        corr = inc["correlation"]
+        c = len(corr.get("correlated_events", []))
+        lines.append(f"[{i}] P{inc['priority']:<4} {inc['severity']:<8} {inc['kind']:<16} "
+                     f"{inc['icao']} {inc['callsign'] or '-'}  conf={inc['confidence']}"
+                     f"{f'  +{c} corroborating sensor event(s)' if c else ''}")
+        lines.append(f"      {inc['detail']}")
+        lines.append("      recommended (operator decides):")
+        for r in inc["recommendations"]:
+            lines.append(f"        - [{r['urgency']}] {r['action']}: {r['text']}")
+    return "\n".join(lines)
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog=TOOL_NAME,
@@ -69,6 +90,20 @@ def build_parser() -> argparse.ArgumentParser:
     scan.add_argument("--loiter-points", type=int, default=6,
                       metavar="N",
                       help="Min track points for loiter (default 6).")
+
+    # Decision SUPPORT (human-in-the-loop): triage + correlate + advisory recommendations.
+    # This does NOT command effectors and never acts autonomously - it helps the operator.
+    assess = sub.add_parser(
+        "assess",
+        help="Decision support: triage anomalies, correlate with local sensor logs, and "
+             "recommend operator actions (advisory; human-in-the-loop, no effectors).")
+    assess.add_argument("feed", help="Path to ADS-B observation CSV file.")
+    assess.add_argument("--sensors", default=None,
+                        help="Optional local sensor log (CSV/JSON: timestamp,source,type,"
+                             "detail[,lat,lon]) to correlate - cameras, RF logs, access control.")
+    assess.add_argument("--window", type=float, default=60.0,
+                        help="Correlation time window in seconds (default 60).")
+    assess.add_argument("--format", choices=("table", "json"), default="table")
     return p
 
 
@@ -77,7 +112,7 @@ def main(argv: Optional[list] = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
 
-    if args.command != "scan":
+    if args.command not in ("scan", "assess"):
         parser.print_help()
         return 1
 
@@ -89,6 +124,23 @@ def main(argv: Optional[list] = None) -> int:
     except (ValueError, OSError) as e:
         print(f"error: failed to parse feed: {e}", file=sys.stderr)
         return 1
+
+    if args.command == "assess":
+        from . import decision
+        result = analyze(observations)
+        sensor_events = []
+        if args.sensors:
+            try:
+                sensor_events = decision.load_sensor_events(args.sensors)
+            except (OSError, ValueError) as e:
+                print(f"error: failed to read sensors: {e}", file=sys.stderr)
+                return 1
+        report = decision.assess(result, sensor_events, window_s=args.window)
+        if args.format == "json":
+            print(json.dumps(report, indent=2))
+        else:
+            print(_render_assessment(report))
+        return 2 if report["incident_count"] else 0
 
     result = analyze(
         observations,
