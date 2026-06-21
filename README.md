@@ -40,6 +40,14 @@ adsbwatch scan .            # → prioritized findings in seconds
    ```bash
    adsbwatch scan feed.csv --format json | jq '.anomalies'
    ```
+   Or export the picture straight to maps and threat-intel platforms — native, zero-dep:
+   ```bash
+   adsbwatch scan feed.csv --format geojson > anomalies.geojson   # Leaflet/Mapbox/QGIS/kepler
+   adsbwatch scan feed.csv --format stix    > anomalies.json       # STIX 2.1 bundle for OpenCTI/TIPs
+   ```
+   GeoJSON plots each geolocated anomaly (emergency squawks, spoofed callsigns,
+   loiter orbits); STIX pairs a `location` + `observed-data` + `note` per anomaly
+   in a `report`. (A live Finding stream to MISP/Splunk/Slack is in `adsbwatch.connect`.)
 5. **Drive alerting in CI/cron** — exit `2` when anomalies are found, `0` when clean, `1` on parse error:
    ```yaml
    - run: pip install -e . && adsbwatch scan feed.csv   # exit 2 => trigger alert

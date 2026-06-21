@@ -79,8 +79,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     scan = sub.add_parser("scan", help="Scan an ADS-B CSV feed for anomalies.")
     scan.add_argument("feed", help="Path to ADS-B observation CSV file.")
-    scan.add_argument("--format", choices=("table", "json"), default="table",
-                      help="Output format (default: table).")
+    scan.add_argument("--format", choices=("table", "json", "geojson", "stix"), default="table",
+                      help="Output format: table/json, or geojson (mapping) / stix (TIPs).")
     scan.add_argument("--loiter-radius", type=float, default=5.0,
                       metavar="NM",
                       help="Max track radius for loiter detection (default 5 NM).")
@@ -149,7 +149,10 @@ def main(argv: Optional[list] = None) -> int:
         loiter_min_turn_deg=args.loiter_turn,
     )
 
-    if args.format == "json":
+    if args.format in ("geojson", "stix"):
+        from . import intel
+        print(intel.export(result, args.format, observations=observations))
+    elif args.format == "json":
         print(json.dumps(result.to_dict(), indent=2))
     else:
         print(_render_table(result))
