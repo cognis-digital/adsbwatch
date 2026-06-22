@@ -54,6 +54,51 @@ adsbwatch scan .            # → prioritized findings in seconds
    ```
 
 
+## Live data feed — OpenSky, edge & air-gap ready
+
+adsbwatch ships a real, stdlib-only data-feed layer that ingests **live ADS-B
+state vectors** from the **OpenSky Network**, caches them to disk, and re-serves
+that snapshot **offline** — so the tool keeps hunting anomalies on disconnected /
+edge / air-gapped gear. The cached states are converted straight into the same
+`Observation` rows the anomaly engine already scans, so a live emergency squawk
+(7500/7600/7700), callsign spoof, or loiter orbit surfaces exactly as it would
+from a CSV.
+
+Only the single ADS-B-relevant feed is wired in — endpoints come from the
+bundled catalog (`adsbwatch/data_feeds_2026.json`); nothing is invented:
+
+| feed id          | source                                   | URL |
+|------------------|------------------------------------------|-----|
+| `opensky-states` | OpenSky Network — live aircraft states   | `https://opensky-network.org/api/states/all` |
+
+```bash
+adsbwatch feeds list                         # wired feed(s) + cache freshness
+adsbwatch feeds update opensky-states        # fetch + cache the live snapshot
+adsbwatch feeds get opensky-states           # ingest -> scan-ready summary
+adsbwatch feeds get opensky-states --offline # serve cache only (no network)
+
+adsbwatch scan --live                         # ingest live airspace + full scan
+adsbwatch scan --live --region 24,-125,49,-66 # clip to a bounding box (CONUS)
+adsbwatch scan --live --offline               # scan the last cached snapshot
+```
+
+### Air-gap / sneakernet workflow
+
+```bash
+# On a connected box: build a portable snapshot of the feed cache
+COGNIS_FEEDS_CACHE=./snap adsbwatch feeds update opensky-states
+python -m adsbwatch.datafeeds snapshot-export feeds.tar.gz
+
+# Carry feeds.tar.gz across the air gap, then on the isolated box:
+python -m adsbwatch.datafeeds snapshot-import feeds.tar.gz
+adsbwatch scan --live --offline               # full anomaly scan, zero network
+```
+
+The cache location is `COGNIS_FEEDS_CACHE` (default `~/.cache/cognis-feeds`).
+`--offline` never touches the network. OpenSky is keyless (anonymous access is
+rate-limited; an account raises the limits). See `demos/04-live-feed/`.
+
+
 ## Contents
 
 - [Why adsbwatch?](#why) · [Features](#features) · [Quick start](#quick-start) · [Example](#example) · [Architecture](#architecture) · [AI stack](#ai-stack) · [How it compares](#how-it-compares) · [Integrations](#integrations) · [Install anywhere](#install-anywhere) · [Related](#related) · [Contributing](#contributing)

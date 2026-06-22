@@ -78,7 +78,14 @@ def build_parser() -> argparse.ArgumentParser:
     sub = p.add_subparsers(dest="command")
 
     scan = sub.add_parser("scan", help="Scan an ADS-B CSV feed for anomalies.")
-    scan.add_argument("feed", help="Path to ADS-B observation CSV file.")
+    scan.add_argument("feed", nargs="?", default=None,
+                      help="Path to ADS-B observation CSV file (omit with --live).")
+    scan.add_argument("--live", action="store_true",
+                      help="Ingest live ADS-B from the OpenSky feed instead of a CSV.")
+    scan.add_argument("--offline", action="store_true",
+                      help="With --live: serve from the cached OpenSky snapshot (air-gap).")
+    scan.add_argument("--region", default=None, metavar="LAT0,LON0,LAT1,LON1",
+                      help="With --live: clip ingest to a lat/lon bounding box.")
     scan.add_argument("--format", choices=("table", "json", "geojson", "stix"), default="table",
                       help="Output format: table/json, or geojson (mapping) / stix (TIPs).")
     scan.add_argument("--loiter-radius", type=float, default=5.0,
@@ -104,7 +111,32 @@ def build_parser() -> argparse.ArgumentParser:
     assess.add_argument("--window", type=float, default=60.0,
                         help="Correlation time window in seconds (default 60).")
     assess.add_argument("--format", choices=("table", "json"), default="table")
+
+    # Data-feed layer: live ADS-B ingestion from the OpenSky Network (catalog feed
+    # opensky-states), cached to disk and re-servable offline for air-gap use.
+    feeds = sub.add_parser(
+        "feeds",
+        help="Live ADS-B data-feed layer (OpenSky): list | update | get <id> [--offline].")
+    fsub = feeds.add_subparsers(dest="feeds_cmd")
+    fsub.add_parser("list", help="List the ADS-B feed(s) wired into adsbwatch.")
+    fu = fsub.add_parser("update", help="Fetch + cache the live OpenSky feed.")
+    fu.add_argument("feed_id", nargs="?", default="opensky-states")
+    fg = fsub.add_parser("get", help="Ingest OpenSky states as scan-ready input.")
+    fg.add_argument("feed_id", nargs="?", default="opensky-states")
+    fg.add_argument("--offline", action="store_true",
+                    help="Serve from the cached snapshot only (air-gap; no network).")
+    fg.add_argument("--region", default=None, metavar="LAT0,LON0,LAT1,LON1",
+                    help="Clip to a lat/lon bounding box.")
     return p
+
+
+def _parse_region(spec):
+    if not spec:
+        return None
+    parts = [float(x) for x in spec.split(",")]
+    if len(parts) != 4:
+        raise ValueError("region must be LAT0,LON0,LAT1,LON1")
+    return tuple(parts)
 
 
 def main(argv: Optional[list] = None) -> int:
@@ -112,18 +144,48 @@ def main(argv: Optional[list] = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
 
-    if args.command not in ("scan", "assess"):
+    if args.command not in ("scan", "assess", "feeds"):
         parser.print_help()
         return 1
 
-    try:
-        observations = parse_csv(args.feed)
-    except FileNotFoundError:
-        print(f"error: feed not found: {args.feed}", file=sys.stderr)
-        return 1
-    except (ValueError, OSError) as e:
-        print(f"error: failed to parse feed: {e}", file=sys.stderr)
-        return 1
+    if args.command == "feeds":
+        from . import feeds as feeds_mod
+        if getattr(args, "feeds_cmd", None) is None:
+            print("usage: adsbwatch feeds {list|update|get} [<id>] [--offline]",
+                  file=sys.stderr)
+            return 1
+        try:
+            args._region = _parse_region(getattr(args, "region", None))
+        except ValueError as e:
+            print(f"error: {e}", file=sys.stderr)
+            return 1
+        return feeds_mod.feeds_main(args)
+
+    # scan --live ingests the OpenSky feed directly; otherwise read the CSV.
+    if args.command == "scan" and getattr(args, "live", False):
+        from . import feeds as feeds_mod
+        try:
+            region = _parse_region(args.region)
+            observations = feeds_mod.fetch_observations(
+                offline=args.offline, region=region)
+        except FileNotFoundError as e:
+            print(f"error: {e}", file=sys.stderr)
+            return 1
+        except (ValueError, KeyError, ConnectionError) as e:
+            print(f"error: live ingest failed: {e}", file=sys.stderr)
+            return 1
+    else:
+        if not args.feed:
+            print("error: provide a feed CSV path or use --live", file=sys.stderr)
+            return 1
+        try:
+            observations = parse_csv(args.feed)
+        except FileNotFoundError:
+            print(f"error: feed not found: {args.feed}", file=sys.stderr)
+            return 1
+        except (ValueError, OSError) as e:
+            print(f"error: failed to parse feed: {e}", file=sys.stderr)
+            return 1
 
     if args.command == "assess":
         from . import decision
