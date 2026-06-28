@@ -20,6 +20,67 @@ pip install cognis-adsbwatch
 adsbwatch scan .            # → prioritized findings in seconds
 ```
 
+
+<!-- cognis:example:start -->
+## 🔎 Example output
+
+Real, reproducible output from the tool — runs offline:
+
+```console
+$ adsbwatch-emit --version
+adsbwatch 0.3.0
+```
+
+```console
+$ adsbwatch-emit --help
+usage: adsbwatch [-h] [--version] {scan,assess,feeds} ...
+
+Defensive OSINT analysis of an ADS-B feed for anomalies (emergency squawks,
+callsign spoofing, loiter patterns).
+
+positional arguments:
+  {scan,assess,feeds}
+    scan               Scan an ADS-B CSV feed for anomalies.
+    assess             Decision support: triage anomalies, correlate with
+                       local sensor logs, and recommend operator actions
+                       (advisory; human-in-the-loop, no effectors).
+    feeds              Live ADS-B data-feed layer (OpenSky): list | update |
+                       get <id> [--offline].
+
+options:
+  -h, --help           show this help message and exit
+  --version            show program's version number and exit
+```
+
+> Blocks above are real `adsbwatch` output — reproduce them from a clone.
+
+**Sample result format** _(illustrative values — run on your own data for real findings):_
+
+```
+{
+"adsb": {
+"type": "aircraft",
+"icao24": "A12345",
+"callsign": "XYZ456",
+"latitude": 37.7749,
+"longitude": -122.4194,
+"altitude": 3000,
+"velocity": 200,
+"heading": 270
+},
+"findings": [
+{
+"id": "1",
+"type": "aircraft-track",
+"start_time": "2023-02-15T14:30:00Z",
+"end_time": "2023-02-15T14:35:00Z"
+}
+]
+}
+```
+
+<!-- cognis:example:end -->
+
 ## Usage — step by step
 
 `adsbwatch` runs defensive OSINT analysis of an ADS-B feed (CSV) for anomalies — emergency squawks, callsign spoofing, and loiter patterns.

@@ -1,0 +1,3 @@
+$ adsbwatch-emit --version
+
+adsbwatch 0.3.0

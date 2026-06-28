@@ -1,0 +1,19 @@
+$ adsbwatch-emit --help
+
+usage: adsbwatch [-h] [--version] {scan,assess,feeds} ...
+
+Defensive OSINT analysis of an ADS-B feed for anomalies (emergency squawks,
+callsign spoofing, loiter patterns).
+
+positional arguments:
+  {scan,assess,feeds}
+    scan               Scan an ADS-B CSV feed for anomalies.
+    assess             Decision support: triage anomalies, correlate with
+                       local sensor logs, and recommend operator actions
+                       (advisory; human-in-the-loop, no effectors).
+    feeds              Live ADS-B data-feed layer (OpenSky): list | update |
+                       get <id> [--offline].
+
+options:
+  -h, --help           show this help message and exit
+  --version            show program's version number and exit
