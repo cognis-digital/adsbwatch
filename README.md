@@ -234,9 +234,44 @@ $ adsbwatch scan .
 
 ```mermaid
 flowchart LR
-  IN[input] --> P[adsbwatch<br/>analyze + score]
-  P --> OUT[report]
+  csv[ADS-B CSV] --> P[adsbwatch<br/>analyze]
+  osk[OpenSky live/cache] --> P
+  P --> emerg[emergency squawk]
+  P --> spoof[callsign spoof]
+  P --> loiter[loiter]
+  emerg --> R[(AnalysisResult)]
+  spoof --> R
+  loiter --> R
+  R --> OUT[table / JSON]
+  R --> intel[GeoJSON / STIX]
+  R --> decide[decision support<br/>human-in-the-loop]
 ```
+
+See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the full design.
+
+<div align="right"><a href="#top">↑ back to top</a></div>
+
+<a name="demos"></a>
+## Demos
+
+Five runnable, **offline** scenarios in [`demos/`](demos/) — each uses the real
+adsbwatch API over a bundled sample feed (no fabricated output). They double as
+smoke tests (`tests/test_demos.py`).
+
+```bash
+python demos/run_all.py             # all five, end to end (exits 0)
+python demos/01_anomaly_scan.py     # or just one
+```
+
+| # | Scenario | Audience | What it shows |
+|---|----------|----------|---------------|
+| 1 | [`01_anomaly_scan.py`](demos/01_anomaly_scan.py) | OSINT / aviation analysts | Full scan, findings ranked critical → low |
+| 2 | [`02_callsign_spoofing.py`](demos/02_callsign_spoofing.py) | Journalists / OSINT | One ICAO, two callsigns → citable JSON |
+| 3 | [`03_force_protection.py`](demos/03_force_protection.py) | Defense / force-protection | Triage + sensor correlation, advisory only (human-in-the-loop) |
+| 4 | [`04_intel_export.py`](demos/04_intel_export.py) | Researchers / SOC | GeoJSON for maps, STIX 2.1 for TIPs |
+| 5 | [`05_live_feed_offline.py`](demos/05_live_feed_offline.py) | Edge / air-gap operators | Live OpenSky ingest served from an offline cache |
+
+See [`docs/DEMOS.md`](docs/DEMOS.md) for details and [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the design.
 
 <div align="right"><a href="#top">↑ back to top</a></div>
 
