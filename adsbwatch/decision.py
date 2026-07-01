@@ -149,6 +149,14 @@ _PLAYBOOK = {
          "pattern-of-life.", "prompt"),
         ("notify_operator", "Surface to the operator on watch for a human assessment.", "prompt"),
     ],
+    "impossible_kinematics": [
+        ("request_identification", "Treat the position as suspect: verify against a second "
+         "receiver / secondary radar before trusting the track.", "prompt"),
+        ("preserve_evidence", "Snapshot the raw reports around the jump for later analysis of "
+         "possible position spoofing or a cloned ICAO.", "prompt"),
+        ("correlate", "Correlate with other local sensors to see whether any real contact "
+         "exists at either reported position.", "prompt"),
+    ],
 }
 _DEFAULT_PLAY = [
     ("notify_operator", "Surface to the operator for assessment.", "prompt"),
@@ -200,14 +208,38 @@ def assess(result, sensor_events: list[SensorEvent] | None = None,
 
 # --- loaders for external local sensor logs ---------------------------------
 def load_sensor_events(path_or_text: str) -> list[SensorEvent]:
-    """Load other local sensor records (CSV or JSON list) for correlation."""
+    """Load other local sensor records (CSV or JSON) for correlation.
+
+    Accepts a path to a ``.csv``/``.json`` file, or the raw CSV/JSON text
+    directly. Empty or whitespace-only input yields no events (rather than an
+    opaque parse error). Malformed JSON/CSV raises ``ValueError``.
+    """
+    if path_or_text is None:
+        return []
     text = path_or_text
-    if "\n" not in path_or_text and path_or_text.strip()[:1] not in "[{":
+    is_path = ("\n" not in path_or_text
+               and path_or_text.strip()[:1] not in ("[", "{")
+               and path_or_text.strip() != "")
+    if is_path:
+        # Treat as a filesystem path; propagate a clear FileNotFoundError/OSError.
         with open(path_or_text, encoding="utf-8") as fh:
             text = fh.read()
-    rows = (list(csv.DictReader(io.StringIO(text))) if path_or_text.lower().endswith(".csv")
-            or (("," in text) and not text.lstrip().startswith(("[", "{")))
-            else (json.loads(text) if text.strip()[:1] in "[{" else []))
+
+    stripped = text.strip()
+    if not stripped:
+        return []
+
+    is_json = stripped[:1] in ("[", "{")
+    is_csv = path_or_text.lower().endswith(".csv") or (not is_json and "," in text)
+    try:
+        if is_json:
+            rows = json.loads(text)
+        elif is_csv:
+            rows = list(csv.DictReader(io.StringIO(text)))
+        else:
+            rows = []
+    except (json.JSONDecodeError, csv.Error) as e:
+        raise ValueError(f"could not parse sensor events: {e}") from e
     if isinstance(rows, dict):
         rows = rows.get("events", [])
     out = []

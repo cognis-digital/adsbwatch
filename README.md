@@ -92,7 +92,7 @@ options:
 
 ## Usage — step by step
 
-`adsbwatch` runs defensive OSINT analysis of an ADS-B feed (CSV) for anomalies — emergency squawks, callsign spoofing, and loiter patterns.
+`adsbwatch` runs defensive OSINT analysis of an ADS-B feed (CSV) for anomalies — emergency squawks, callsign spoofing, impossible kinematics (position spoofing), and loiter patterns.
 
 1. **Install** (Python 3.10+):
    ```bash
@@ -102,9 +102,11 @@ options:
    ```bash
    adsbwatch scan feed.csv
    ```
-3. **Tune loiter detection** (track radius, cumulative turn, min points):
+3. **Tune the detectors** (loiter track radius, cumulative turn, min points; and the
+   impossible-kinematics ground-speed ceiling):
    ```bash
    adsbwatch scan feed.csv --loiter-radius 5 --loiter-turn 270 --loiter-points 6
+   adsbwatch scan feed.csv --max-speed 900      # flag anything implying >900 kt (0 disables)
    ```
 4. **Read the output** as JSON for piping / alerting:
    ```bash
@@ -185,7 +187,7 @@ Analyze an ADS-B feed/CSV for anomalies: callsign spoofing, squawk 7500/7600/770
 <a name="features"></a>
 ## Features
 
-- ✅ ADS-B anomaly detection — emergency squawks (7500/7600/7700), callsign spoofing, loiter
+- ✅ ADS-B anomaly detection — emergency squawks (7500/7600/7700), callsign spoofing, impossible kinematics (position spoofing), loiter
 - ✅ **Decision support (human-in-the-loop)** — `assess`: triage, multi-sensor correlation, advisory recommendations
 - ✅ **Sensor correlation** — fuse alerts with local camera / RF / access-control logs on a timeline (evidence + pattern-of-life)
 - ✅ Data sovereignty — fully local/offline, pure standard library; nothing leaves the box
@@ -247,9 +249,11 @@ flowchart LR
   osk[OpenSky live/cache] --> P
   P --> emerg[emergency squawk]
   P --> spoof[callsign spoof]
+  P --> kin[impossible kinematics]
   P --> loiter[loiter]
   emerg --> R[(AnalysisResult)]
   spoof --> R
+  kin --> R
   loiter --> R
   R --> OUT[table / JSON]
   R --> intel[GeoJSON / STIX]

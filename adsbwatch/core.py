@@ -40,6 +40,13 @@ _CALLSIGN_OK = re.compile(r"^[A-Z0-9]{2,8}$")
 
 EARTH_RADIUS_NM = 3440.065  # nautical miles
 
+# Fastest air-breathing aircraft in level flight (SR-71) is ~2000 kt; anything
+# implying a ground speed far beyond this between two consecutive reports from a
+# single hardware address is physically impossible and a classic signature of a
+# spoofed/injected position (or a corrupt feed). We default the ceiling well
+# above any conventional aircraft to keep false positives near zero.
+DEFAULT_MAX_GROUND_SPEED_KT = 3500.0
+
 
 # ---------------------------------------------------------------------------
 # Data model
@@ -63,7 +70,7 @@ class Observation:
 @dataclass
 class Anomaly:
     """A detected anomaly tied to an aircraft."""
-    kind: str            # 'emergency_squawk' | 'callsign_spoof' | 'loiter'
+    kind: str            # 'emergency_squawk' | 'callsign_spoof' | 'loiter' | 'impossible_kinematics'
     severity: str        # 'critical' | 'high' | 'medium' | 'low'
     icao: str
     callsign: str
@@ -304,14 +311,70 @@ def _detect_loiter(obs_by_ac: dict, *, min_points: int, radius_nm: float,
     return found
 
 
+def _detect_impossible_kinematics(obs_by_ac: dict, *, max_speed_kt: float) -> list:
+    """Flag physically impossible motion for a single ICAO.
+
+    Between two consecutive geolocated reports from one hardware address we
+    compute the implied ground speed (great-circle distance / elapsed time). A
+    speed above ``max_speed_kt`` means the aircraft would have to teleport — the
+    hallmark of a spoofed / injected position report or two aircraft sharing one
+    (cloned) ICAO. Reports with the same timestamp but different positions are
+    treated as an infinite-speed jump. Zero/negative time deltas from duplicate
+    identical points are ignored.
+    """
+    found: list = []
+    for icao, obs in obs_by_ac.items():
+        pts = [o for o in obs if o.lat is not None and o.lon is not None]
+        pts.sort(key=lambda o: o.timestamp)
+        for a, b in zip(pts, pts[1:]):
+            dist_nm = haversine_nm(a.lat, a.lon, b.lat, b.lon)
+            if dist_nm < 1e-6:
+                continue  # same position -> no jump regardless of dt
+            dt_h = (b.timestamp - a.timestamp) / 3600.0
+            if dt_h <= 0:
+                speed = float("inf")  # moved without time passing
+            else:
+                speed = dist_nm / dt_h
+            if speed > max_speed_kt:
+                found.append(Anomaly(
+                    kind="impossible_kinematics",
+                    severity="high",
+                    icao=icao,
+                    callsign=(b.callsign or a.callsign or ""),
+                    detail=(f"Implied ground speed "
+                            f"{'inf' if speed == float('inf') else f'{speed:.0f}'} kt "
+                            f"({dist_nm:.1f} NM in {(b.timestamp - a.timestamp):.1f}s) "
+                            f"exceeds {max_speed_kt:.0f} kt — likely spoofed/injected position"),
+                    timestamp=b.timestamp,
+                    evidence={
+                        "implied_speed_kt": (None if speed == float("inf")
+                                             else round(speed, 1)),
+                        "distance_nm": round(dist_nm, 3),
+                        "dt_sec": round(b.timestamp - a.timestamp, 3),
+                        "from": [round(a.lat, 5), round(a.lon, 5)],
+                        "to": [round(b.lat, 5), round(b.lon, 5)],
+                        "max_speed_kt": max_speed_kt,
+                    },
+                ))
+                break  # one finding per aircraft is enough to raise it
+    return found
+
+
 # ---------------------------------------------------------------------------
 # Top-level analysis
 # ---------------------------------------------------------------------------
 
 def analyze(observations: list, *, loiter_min_points: int = 6,
             loiter_radius_nm: float = 5.0,
-            loiter_min_turn_deg: float = 270.0) -> AnalysisResult:
-    """Run all detectors over a list of Observation objects."""
+            loiter_min_turn_deg: float = 270.0,
+            kinematics_max_speed_kt: float = DEFAULT_MAX_GROUND_SPEED_KT) -> AnalysisResult:
+    """Run all detectors over a list of Observation objects.
+
+    ``kinematics_max_speed_kt`` sets the implied ground-speed ceiling for the
+    impossible-kinematics detector; a speed above it between two consecutive
+    reports from one ICAO is flagged as a likely spoofed/injected position. Set
+    it to ``0`` or a negative value to disable that detector.
+    """
     obs_by_ac: dict = {}
     for o in observations:
         obs_by_ac.setdefault(o.icao, []).append(o)
@@ -325,6 +388,9 @@ def analyze(observations: list, *, loiter_min_points: int = 6,
         radius_nm=loiter_radius_nm,
         min_turn_deg=loiter_min_turn_deg,
     )
+    if kinematics_max_speed_kt and kinematics_max_speed_kt > 0:
+        anomalies += _detect_impossible_kinematics(
+            obs_by_ac, max_speed_kt=kinematics_max_speed_kt)
 
     sev_rank = {"critical": 0, "high": 1, "medium": 2, "low": 3}
     anomalies.sort(key=lambda a: (sev_rank.get(a.severity, 9), a.timestamp, a.icao))

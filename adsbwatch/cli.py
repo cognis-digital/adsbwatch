@@ -18,7 +18,7 @@ import sys
 from typing import Optional
 
 from . import TOOL_NAME, TOOL_VERSION
-from .core import parse_csv, analyze, AnalysisResult
+from .core import parse_csv, analyze, AnalysisResult, DEFAULT_MAX_GROUND_SPEED_KT
 
 
 def _fmt_ts(ts: float) -> str:
@@ -97,6 +97,10 @@ def build_parser() -> argparse.ArgumentParser:
     scan.add_argument("--loiter-points", type=int, default=6,
                       metavar="N",
                       help="Min track points for loiter (default 6).")
+    scan.add_argument("--max-speed", type=float, default=DEFAULT_MAX_GROUND_SPEED_KT,
+                      metavar="KT",
+                      help="Impossible-kinematics ground-speed ceiling in knots "
+                           f"(default {DEFAULT_MAX_GROUND_SPEED_KT:.0f}); 0 disables it.")
 
     # Decision SUPPORT (human-in-the-loop): triage + correlate + advisory recommendations.
     # This does NOT command effectors and never acts autonomously - it helps the operator.
@@ -209,6 +213,7 @@ def main(argv: Optional[list] = None) -> int:
         loiter_min_points=args.loiter_points,
         loiter_radius_nm=args.loiter_radius,
         loiter_min_turn_deg=args.loiter_turn,
+        kinematics_max_speed_kt=getattr(args, "max_speed", DEFAULT_MAX_GROUND_SPEED_KT),
     )
 
     if args.format in ("geojson", "stix"):
