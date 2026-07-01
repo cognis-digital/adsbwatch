@@ -48,3 +48,11 @@ def load_feed(path: str = FEED_CSV):
     """Parse a sample ADS-B CSV into Observation rows (real parser, offline)."""
     from adsbwatch.core import parse_csv
     return parse_csv(path)
+
+
+def print_anomaly(a) -> None:
+    """Uniform one-block print of an Anomaly across scenarios."""
+    icon = SEV_ICON.get(a.severity, "[????]")
+    print(f"  {icon} {a.kind:<22} ICAO {a.icao} {a.callsign or '-':<10} "
+          f"{fmt_ts(a.timestamp)}")
+    print(f"      {a.detail}")

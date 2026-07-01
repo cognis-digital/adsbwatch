@@ -1,0 +1,22 @@
+{
+  "zones": [
+    {
+      "id": "R-4809",
+      "name": "Sample restricted area (circle)",
+      "shape": "circle",
+      "severity": "high",
+      "center": [40.65, -73.77],
+      "radius_nm": 10,
+      "alt_floor_ft": 0,
+      "alt_ceiling_ft": 18000
+    },
+    {
+      "id": "TFR-DEMO",
+      "name": "Sample TFR (polygon)",
+      "shape": "polygon",
+      "severity": "critical",
+      "vertices": [[40.0, -74.5], [40.0, -73.0], [41.0, -73.0], [41.0, -74.5]],
+      "alt_ceiling_ft": 5000
+    }
+  ]
+}
