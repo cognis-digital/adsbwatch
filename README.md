@@ -112,14 +112,36 @@ options:
    ```bash
    adsbwatch scan feed.csv --format json | jq '.anomalies'
    ```
-   Or export the picture straight to maps and threat-intel platforms — native, zero-dep:
+   Or export the picture straight to maps, threat-intel platforms, and TAK — native, zero-dep:
    ```bash
    adsbwatch scan feed.csv --format geojson > anomalies.geojson   # Leaflet/Mapbox/QGIS/kepler
+   adsbwatch scan feed.csv --format kml     > anomalies.kml        # Google Earth / QGIS (severity-styled)
    adsbwatch scan feed.csv --format stix    > anomalies.json       # STIX 2.1 bundle for OpenCTI/TIPs
+   adsbwatch scan feed.csv --format cot     > anomalies.cot        # Cursor-on-Target for ATAK/TAK
    ```
-   GeoJSON plots each geolocated anomaly (emergency squawks, spoofed callsigns,
-   loiter orbits); STIX pairs a `location` + `observed-data` + `note` per anomaly
-   in a `report`. (A live Finding stream to MISP/Splunk/Slack is in `adsbwatch.connect`.)
+   GeoJSON/KML plot each geolocated anomaly (emergency squawks, spoofed callsigns,
+   loiter orbits, formations, incursions); STIX pairs a `location` + `observed-data`
+   + `note` per anomaly in a `report`; CoT emits **neutral/unknown** air tracks
+   (`a-u-A`) for a TAK common operating picture — situational awareness for a human,
+   never a hostile designation. (A live Finding stream to MISP/Splunk/Slack is in
+   `adsbwatch.connect`.)
+
+### Restricted-airspace / NOTAM incursion + pattern-of-life
+
+```bash
+# Check a feed against OFFLINE restricted zones (circle/polygon, altitude band, active window)
+adsbwatch airspace feed.csv --zones zones.json                 # table of incursions (exit 2 if any)
+adsbwatch scan feed.csv --zones zones.json                     # fold incursions into a normal scan
+
+# Pattern-of-life: per-aircraft profiles + recurring visits near a point of interest
+adsbwatch patterns feed.csv                                    # dwell, track length, callsigns/squawks
+adsbwatch patterns feed.csv --poi 40.65,-73.77 --poi-radius 10 # recurring visits near a monitored site
+```
+
+Zone fixtures are plain JSON (a NOTAM/TFR export stand-in) — see
+[`demos/01-basic/zones.json`](demos/01-basic/zones.json). Everything is offline
+and descriptive: the tool reports *that* a track entered a monitored volume or
+made repeat visits, for a human to assess — it never targets.
 5. **Drive alerting in CI/cron** — exit `2` when anomalies are found, `0` when clean, `1` on parse error:
    ```yaml
    - run: pip install -e . && adsbwatch scan feed.csv   # exit 2 => trigger alert
@@ -187,9 +209,12 @@ Analyze an ADS-B feed/CSV for anomalies: callsign spoofing, squawk 7500/7600/770
 <a name="features"></a>
 ## Features
 
-- ✅ ADS-B anomaly detection — emergency squawks (7500/7600/7700), callsign spoofing, impossible kinematics (position spoofing), loiter
+- ✅ ADS-B anomaly detection — emergency squawks (7500/7600/7700), **mid-track squawk changes** (a crew declaring an emergency), callsign spoofing, impossible kinematics (position spoofing), **implausible vertical rate**, loiter/orbit, and **formation flight** (two ICAOs holding tight together)
+- ✅ **Restricted-airspace / NOTAM incursion** — `airspace`: check a feed against offline zone fixtures (circle + polygon, altitude band, active window) for incursions
+- ✅ **Pattern-of-life analytics** — `patterns`: per-aircraft profiles (dwell, track length, callsigns/squawks) + recurring visits near a point of interest
 - ✅ **Decision support (human-in-the-loop)** — `assess`: triage, multi-sensor correlation, advisory recommendations
 - ✅ **Sensor correlation** — fuse alerts with local camera / RF / access-control logs on a timeline (evidence + pattern-of-life)
+- ✅ **Intel exporters** — GeoJSON, KML (Google Earth/QGIS), STIX 2.1 (TIPs), and CoT (ATAK/TAK), all native and zero-dep
 - ✅ Data sovereignty — fully local/offline, pure standard library; nothing leaves the box
 - ✅ Runs on Linux/macOS/Windows · Docker · devcontainer
 - ✅ Ports in Python, JavaScript, Go, and Rust (`ports/`)
@@ -267,9 +292,9 @@ See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the full design.
 <a name="demos"></a>
 ## Demos
 
-Five runnable, **offline** scenarios in [`demos/`](demos/) — each uses the real
-adsbwatch API over a bundled sample feed (no fabricated output). They double as
-smoke tests (`tests/test_demos.py`).
+Twenty-four runnable, **offline** scenarios in [`demos/`](demos/) — each uses the
+real adsbwatch API over a bundled sample feed (no fabricated output). They double
+as smoke tests (`tests/test_demos.py`).
 
 ```bash
 python demos/run_all.py             # all five, end to end (exits 0)
@@ -283,6 +308,13 @@ python demos/01_anomaly_scan.py     # or just one
 | 3 | [`03_force_protection.py`](demos/03_force_protection.py) | Defense / force-protection | Triage + sensor correlation, advisory only (human-in-the-loop) |
 | 4 | [`04_intel_export.py`](demos/04_intel_export.py) | Researchers / SOC | GeoJSON for maps, STIX 2.1 for TIPs |
 | 5 | [`05_live_feed_offline.py`](demos/05_live_feed_offline.py) | Edge / air-gap operators | Live OpenSky ingest served from an offline cache |
+| 21 | [`21_airspace_incursion.py`](demos/21_airspace_incursion.py) | Airspace monitoring | Offline restricted-zone / NOTAM incursion check |
+| 22 | [`22_pattern_of_life.py`](demos/22_pattern_of_life.py) | OSINT / analysts | Per-aircraft profiles + recurring visits near a POI |
+| 23 | [`23_kml_export.py`](demos/23_kml_export.py) | GIS analysts | Severity-styled KML for Google Earth / QGIS |
+| 24 | [`24_cot_atak.py`](demos/24_cot_atak.py) | TAK operators | Cursor-on-Target events for ATAK/TAK (neutral tracks) |
+
+(Scenarios 6–20 cover kinematics, exports, region-clipping, air-gap, triage, sensor
+fusion, playbooks, edge cases, and combined spoofing — run `python demos/run_all.py`.)
 
 See [`docs/DEMOS.md`](docs/DEMOS.md) for details and [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the design.
 

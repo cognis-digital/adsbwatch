@@ -126,7 +126,125 @@ def to_stix(result, observations=None) -> str:
     }, indent=2)
 
 
-_EXPORTERS = {"geojson": to_geojson, "stix": to_stix}
+# --------------------------------------------------------------------------- #
+# KML (Google Earth / QGIS)
+# --------------------------------------------------------------------------- #
+def _xml_escape(s: str) -> str:
+    return (str(s).replace("&", "&amp;").replace("<", "&lt;")
+            .replace(">", "&gt;").replace('"', "&quot;"))
+
+
+# Google-Earth placemark colours are aabbggrr (alpha,blue,green,red).
+_KML_COLOR = {
+    "critical": "ff0000ff",   # red
+    "high": "ff007fff",       # orange
+    "medium": "ff00ffff",     # yellow
+    "low": "ff00ff00",        # green
+}
+
+
+def to_kml(result, observations=None) -> str:
+    """Google Earth / KML: one styled Placemark per geolocated anomaly.
+
+    Colours track severity so an analyst can eyeball the picture in Earth/QGIS.
+    Standard library only; no map service.
+    """
+    pos = _positions(observations)
+    styles = []
+    for sev, color in _KML_COLOR.items():
+        styles.append(
+            f'    <Style id="sev-{sev}">\n'
+            f'      <IconStyle><color>{color}</color>'
+            f'<Icon><href>http://maps.google.com/mapfiles/kml/shapes/target.png</href></Icon>'
+            f'</IconStyle>\n    </Style>')
+    marks = []
+    for a in result.anomalies:
+        c = _coords(a, pos)
+        if c is None:
+            continue
+        lat, lon = c
+        sev = a.severity if a.severity in _KML_COLOR else "medium"
+        name = _xml_escape(f"{a.kind}: {a.icao} {a.callsign}".strip())
+        desc = _xml_escape(f"{a.detail} ({_iso(a.timestamp)})")
+        marks.append(
+            f'    <Placemark>\n'
+            f'      <name>{name}</name>\n'
+            f'      <description>{desc}</description>\n'
+            f'      <styleUrl>#sev-{sev}</styleUrl>\n'
+            f'      <Point><coordinates>{lon},{lat},0</coordinates></Point>\n'
+            f'    </Placemark>')
+    body = "\n".join(styles + marks)
+    return (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<kml xmlns="http://www.opengis.net/kml/2.2">\n'
+        '  <Document>\n'
+        '    <name>adsbwatch anomalies</name>\n'
+        f'{body}\n'
+        '  </Document>\n'
+        '</kml>\n')
+
+
+# --------------------------------------------------------------------------- #
+# Cursor-on-Target (CoT) — ATAK / TAK situational-awareness feed
+# --------------------------------------------------------------------------- #
+# Neutral/unknown SA event type. We deliberately emit a generic track/point
+# atom, NOT a hostile designation — this is situational awareness for a human,
+# not targeting.
+_COT_TYPE = "a-u-A"   # atom, unknown affiliation, Air
+
+
+def to_cot(result, observations=None, *, stale_s: float = 3600.0) -> str:
+    """Cursor-on-Target XML events (ATAK/TAK/WinTAK) for each geolocated anomaly.
+
+    Emits neutral/unknown air tracks (``a-u-A``) with a remark carrying the
+    finding — situational awareness for an operator's common operating picture.
+    It is not a targeting designation and carries no affiliation as hostile.
+    """
+    pos = _positions(observations)
+    events = []
+    for a in result.anomalies:
+        c = _coords(a, pos)
+        if c is None:
+            continue
+        lat, lon = c
+        t = _iso(a.timestamp)
+        stale = _iso(float(a.timestamp) + stale_s) if _is_num(a.timestamp) else t
+        uid = _xml_escape(f"adsbwatch.{a.icao}.{a.kind}.{int(_num(a.timestamp))}")
+        remark = _xml_escape(f"[{a.severity}] {a.kind}: {a.detail}")
+        callsign = _xml_escape(a.callsign or a.icao)
+        events.append(
+            f'  <event version="2.0" uid="{uid}" type="{_COT_TYPE}" '
+            f'time="{t}" start="{t}" stale="{stale}" how="m-g">\n'
+            f'    <point lat="{lat}" lon="{lon}" hae="0" ce="9999999" le="9999999"/>\n'
+            f'    <detail>\n'
+            f'      <contact callsign="{callsign}"/>\n'
+            f'      <remarks>{remark}</remarks>\n'
+            f'    </detail>\n'
+            f'  </event>')
+    inner = "\n".join(events)
+    return (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
+        '<events>\n'
+        f'{inner}\n'
+        '</events>\n')
+
+
+def _is_num(v) -> bool:
+    try:
+        float(v)
+        return True
+    except (TypeError, ValueError):
+        return False
+
+
+def _num(v) -> float:
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+_EXPORTERS = {"geojson": to_geojson, "stix": to_stix, "kml": to_kml, "cot": to_cot}
 
 
 def export(result, fmt: str, observations=None) -> str:

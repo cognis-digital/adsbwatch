@@ -138,6 +138,25 @@ the `0` / `2` / `1` exit codes you branch on in a cron job or CI gate.
 and jumps the Atlantic trips two independent detectors at once — corroborating
 evidence of a manufactured track.
 
+## 21. Airspace incursion — *did a track enter a monitored volume?*
+**Airspace monitoring.** Loads offline restricted zones (a circle range and a
+polygon TFR, altitude-banded) and reports which aircraft entered an active zone —
+descriptive situational awareness for a human, never targeting.
+
+## 22. Pattern of life — *what is the behaviour over time?*
+**Analytics.** Rolls the feed up into per-aircraft profiles (dwell, track length,
+callsigns/squawks) and finds aircraft making recurring visits near a point of
+interest around a monitored site.
+
+## 23. KML export — *open the picture in Google Earth / QGIS*
+**GIS.** Emits severity-styled KML placemarks for every geolocated anomaly, then
+parses it back to prove the document is well-formed.
+
+## 24. CoT / ATAK — *push the picture to a TAK common operating picture*
+**TAK.** Emits Cursor-on-Target events (neutral/unknown air tracks, `a-u-A`) for
+ATAK/WinTAK/TAK Server — shared awareness for an operator, not a hostile
+designation.
+
 ---
 
 Each demo prints clear, narrated output and exits 0, so they double as smoke

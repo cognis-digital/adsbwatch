@@ -47,6 +47,21 @@ EARTH_RADIUS_NM = 3440.065  # nautical miles
 # above any conventional aircraft to keep false positives near zero.
 DEFAULT_MAX_GROUND_SPEED_KT = 3500.0
 
+# No conventional aircraft sustains a climb/descent beyond roughly this many feet
+# per minute; a computed vertical rate far above it between two consecutive
+# reports for one ICAO is either a corrupt/spoofed altitude or a data artifact.
+# Fighters can briefly exceed 30k ft/min in a zoom climb, so we default high to
+# keep false positives near zero and let operators tighten it.
+DEFAULT_MAX_VERTICAL_RATE_FPM = 60000.0
+
+# Two distinct ICAOs holding tight in both horizontal distance and altitude while
+# co-present in time is a formation-flight signature (relevant to force
+# protection / airspace monitoring). Defaults are conservative so aircraft that
+# merely pass near one another are not flagged.
+DEFAULT_FORMATION_RADIUS_NM = 1.0
+DEFAULT_FORMATION_ALT_FT = 500.0
+DEFAULT_FORMATION_MIN_SAMPLES = 3
+
 
 # ---------------------------------------------------------------------------
 # Data model
@@ -70,7 +85,9 @@ class Observation:
 @dataclass
 class Anomaly:
     """A detected anomaly tied to an aircraft."""
-    kind: str            # 'emergency_squawk' | 'callsign_spoof' | 'loiter' | 'impossible_kinematics'
+    kind: str            # 'emergency_squawk' | 'callsign_spoof' | 'loiter' |
+                         # 'impossible_kinematics' | 'squawk_change' |
+                         # 'impossible_vertical_rate' | 'formation'
     severity: str        # 'critical' | 'high' | 'medium' | 'low'
     icao: str
     callsign: str
@@ -360,6 +377,169 @@ def _detect_impossible_kinematics(obs_by_ac: dict, *, max_speed_kt: float) -> li
     return found
 
 
+def _detect_squawk_changes(obs_by_ac: dict, *, watch_codes=None) -> list:
+    """Flag a transponder code changing to (or through) an emergency code.
+
+    A mid-track transition *into* 7500/7600/7700 is operationally distinct from a
+    feed that simply starts on an emergency code: it marks the moment a crew
+    declared an emergency (or, if the aircraft was previously squawking a normal
+    code, a possible sudden hijack/comms event). One finding per aircraft per
+    entered emergency code, timestamped at the transition.
+    """
+    watch = set(watch_codes) if watch_codes else set(SQUAWK_MEANINGS)
+    found: list = []
+    for icao, obs in obs_by_ac.items():
+        pts = sorted(obs, key=lambda o: o.timestamp)
+        prev = None
+        entered = set()
+        for o in pts:
+            code = (o.squawk or "").strip()
+            if not code:
+                continue
+            if prev is not None and code != prev and code in watch and code not in entered:
+                entered.add(code)
+                sev = "critical" if code in ("7500", "7700") else "high"
+                meaning = SQUAWK_MEANINGS.get(code, "special-purpose code")
+                found.append(Anomaly(
+                    kind="squawk_change",
+                    severity=sev,
+                    icao=icao,
+                    callsign=o.callsign,
+                    detail=(f"Transponder changed {prev} -> {code} "
+                            f"({meaning}) mid-track"),
+                    timestamp=o.timestamp,
+                    evidence={
+                        "from": prev,
+                        "to": code,
+                        "meaning": meaning,
+                    },
+                ))
+            if code:
+                prev = code
+    return found
+
+
+def _detect_vertical_rate(obs_by_ac: dict, *, max_rate_fpm: float) -> list:
+    """Flag an implausible barometric climb/descent rate for a single ICAO.
+
+    Between two consecutive reports carrying an altitude we compute the vertical
+    rate (delta-alt in feet / elapsed minutes). A rate beyond ``max_rate_fpm`` is
+    either a spoofed/corrupt altitude or a data artifact — of interest both for
+    feed-integrity and for spotting injected tracks. One finding per aircraft.
+    """
+    found: list = []
+    for icao, obs in obs_by_ac.items():
+        pts = [o for o in obs if o.altitude is not None]
+        pts.sort(key=lambda o: o.timestamp)
+        for a, b in zip(pts, pts[1:]):
+            dalt = abs(b.altitude - a.altitude)
+            if dalt < 1.0:
+                continue
+            dt_min = (b.timestamp - a.timestamp) / 60.0
+            if dt_min <= 0:
+                rate = float("inf")
+            else:
+                rate = dalt / dt_min
+            if rate > max_rate_fpm:
+                found.append(Anomaly(
+                    kind="impossible_vertical_rate",
+                    severity="medium",
+                    icao=icao,
+                    callsign=(b.callsign or a.callsign or ""),
+                    detail=(f"Vertical rate "
+                            f"{'inf' if rate == float('inf') else f'{rate:.0f}'} ft/min "
+                            f"({dalt:.0f} ft in {(b.timestamp - a.timestamp):.1f}s) "
+                            f"exceeds {max_rate_fpm:.0f} ft/min — suspect altitude"),
+                    timestamp=b.timestamp,
+                    evidence={
+                        "rate_fpm": (None if rate == float("inf") else round(rate, 1)),
+                        "delta_alt_ft": round(dalt, 1),
+                        "dt_sec": round(b.timestamp - a.timestamp, 3),
+                        "from_alt": a.altitude,
+                        "to_alt": b.altitude,
+                        "max_rate_fpm": max_rate_fpm,
+                    },
+                ))
+                break
+    return found
+
+
+def _time_overlap_positions(obs_a: list, obs_b: list, *, tol_s: float = 30.0):
+    """Yield (pa, pb) pairs of geolocated reports from two aircraft that are
+    close in time (within ``tol_s``). Both lists must be sorted by timestamp."""
+    ga = [o for o in obs_a if o.lat is not None and o.lon is not None]
+    gb = [o for o in obs_b if o.lat is not None and o.lon is not None]
+    j = 0
+    for pa in ga:
+        # advance b-pointer to the first report not too far in the past
+        while j < len(gb) and gb[j].timestamp < pa.timestamp - tol_s:
+            j += 1
+        k = j
+        while k < len(gb) and gb[k].timestamp <= pa.timestamp + tol_s:
+            yield pa, gb[k]
+            k += 1
+
+
+def _detect_formation(obs_by_ac: dict, *, radius_nm: float, alt_ft: float,
+                      min_samples: int, tol_s: float = 30.0) -> list:
+    """Detect two distinct ICAOs flying in close formation.
+
+    Two aircraft that repeatedly (>= ``min_samples`` co-timed reports) hold within
+    ``radius_nm`` horizontally and ``alt_ft`` vertically are flagged as a
+    formation. Purely descriptive situational awareness (force protection /
+    airspace monitoring): it identifies *that* aircraft are flying together, never
+    who to act against. One finding per unordered aircraft pair.
+    """
+    found: list = []
+    icaos = sorted(obs_by_ac)
+    sorted_obs = {i: sorted(obs_by_ac[i], key=lambda o: o.timestamp) for i in icaos}
+    for x in range(len(icaos)):
+        for y in range(x + 1, len(icaos)):
+            ia, ib = icaos[x], icaos[y]
+            samples = 0
+            min_d = float("inf")
+            max_alt_gap = 0.0
+            first_ts = None
+            last_ts = None
+            for pa, pb in _time_overlap_positions(sorted_obs[ia], sorted_obs[ib],
+                                                  tol_s=tol_s):
+                d = haversine_nm(pa.lat, pa.lon, pb.lat, pb.lon)
+                if d > radius_nm:
+                    continue
+                if pa.altitude is not None and pb.altitude is not None:
+                    gap = abs(pa.altitude - pb.altitude)
+                    if gap > alt_ft:
+                        continue
+                    max_alt_gap = max(max_alt_gap, gap)
+                samples += 1
+                min_d = min(min_d, d)
+                ts = max(pa.timestamp, pb.timestamp)
+                first_ts = ts if first_ts is None else min(first_ts, ts)
+                last_ts = ts if last_ts is None else max(last_ts, ts)
+            if samples >= min_samples:
+                ca = next((o.callsign for o in sorted_obs[ia] if o.callsign), "")
+                cb = next((o.callsign for o in sorted_obs[ib] if o.callsign), "")
+                found.append(Anomaly(
+                    kind="formation",
+                    severity="medium",
+                    icao=ia,
+                    callsign=f"{ca or ia}+{cb or ib}",
+                    detail=(f"Formation: {ia} and {ib} held within "
+                            f"{min_d:.2f} NM for {samples} co-timed reports"),
+                    timestamp=first_ts if first_ts is not None else 0.0,
+                    evidence={
+                        "icaos": [ia, ib],
+                        "callsigns": [ca, cb],
+                        "samples": samples,
+                        "min_separation_nm": round(min_d, 3),
+                        "max_alt_gap_ft": round(max_alt_gap, 1),
+                        "first_ts": first_ts,
+                        "last_ts": last_ts,
+                    },
+                ))
+    return found
+
+
 # ---------------------------------------------------------------------------
 # Top-level analysis
 # ---------------------------------------------------------------------------
@@ -367,13 +547,28 @@ def _detect_impossible_kinematics(obs_by_ac: dict, *, max_speed_kt: float) -> li
 def analyze(observations: list, *, loiter_min_points: int = 6,
             loiter_radius_nm: float = 5.0,
             loiter_min_turn_deg: float = 270.0,
-            kinematics_max_speed_kt: float = DEFAULT_MAX_GROUND_SPEED_KT) -> AnalysisResult:
+            kinematics_max_speed_kt: float = DEFAULT_MAX_GROUND_SPEED_KT,
+            vertical_rate_max_fpm: float = DEFAULT_MAX_VERTICAL_RATE_FPM,
+            detect_squawk_changes: bool = True,
+            detect_formation: bool = True,
+            formation_radius_nm: float = DEFAULT_FORMATION_RADIUS_NM,
+            formation_alt_ft: float = DEFAULT_FORMATION_ALT_FT,
+            formation_min_samples: int = DEFAULT_FORMATION_MIN_SAMPLES) -> AnalysisResult:
     """Run all detectors over a list of Observation objects.
 
     ``kinematics_max_speed_kt`` sets the implied ground-speed ceiling for the
     impossible-kinematics detector; a speed above it between two consecutive
     reports from one ICAO is flagged as a likely spoofed/injected position. Set
     it to ``0`` or a negative value to disable that detector.
+
+    ``vertical_rate_max_fpm`` sets the climb/descent ceiling (feet per minute) for
+    the vertical-rate detector; ``0`` or negative disables it.
+
+    ``detect_squawk_changes`` flags a transponder transitioning *into* an
+    emergency code mid-track. ``detect_formation`` flags two ICAOs holding tight
+    formation (``formation_radius_nm`` / ``formation_alt_ft`` /
+    ``formation_min_samples`` tune it). All new detectors are additive and
+    default-on; existing detectors and output are unchanged.
     """
     obs_by_ac: dict = {}
     for o in observations:
@@ -391,6 +586,18 @@ def analyze(observations: list, *, loiter_min_points: int = 6,
     if kinematics_max_speed_kt and kinematics_max_speed_kt > 0:
         anomalies += _detect_impossible_kinematics(
             obs_by_ac, max_speed_kt=kinematics_max_speed_kt)
+    if detect_squawk_changes:
+        anomalies += _detect_squawk_changes(obs_by_ac)
+    if vertical_rate_max_fpm and vertical_rate_max_fpm > 0:
+        anomalies += _detect_vertical_rate(
+            obs_by_ac, max_rate_fpm=vertical_rate_max_fpm)
+    if detect_formation:
+        anomalies += _detect_formation(
+            obs_by_ac,
+            radius_nm=formation_radius_nm,
+            alt_ft=formation_alt_ft,
+            min_samples=formation_min_samples,
+        )
 
     sev_rank = {"critical": 0, "high": 1, "medium": 2, "low": 3}
     anomalies.sort(key=lambda a: (sev_rank.get(a.severity, 9), a.timestamp, a.icao))

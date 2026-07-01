@@ -67,6 +67,29 @@ def _render_assessment(report: dict) -> str:
     return "\n".join(lines)
 
 
+def _render_patterns(summary: dict) -> str:
+    w = summary.get("window", {})
+    lines = [f"ADSBWATCH pattern-of-life  observations={summary['observations']} "
+             f"aircraft={summary['aircraft']}",
+             f"window: {_fmt_ts(w['start']) if w.get('start') is not None else '-'} "
+             f"-> {_fmt_ts(w['end']) if w.get('end') is not None else '-'}",
+             "-" * 72]
+    header = f"{'ICAO':<8} {'REPORTS':>7} {'DWELL(s)':>9} {'TRACK(NM)':>10}  CALLSIGNS"
+    lines.append(header)
+    for p in summary["profiles"]:
+        cs = ",".join(p["callsigns"]) or "-"
+        lines.append(f"{p['icao']:<8} {p['reports']:>7} {p['dwell_s']:>9.0f} "
+                     f"{p['track_nm']:>10.1f}  {cs}")
+    rv = summary.get("recurring_visits")
+    if rv is not None:
+        lines.append("-" * 72)
+        lines.append(f"recurring visits near POI: {len(rv)} aircraft")
+        for r in rv:
+            lines.append(f"  {r['icao']} {r['callsign'] or '-':<10} "
+                         f"{r['visits']} visits, closest {r['closest_nm']} NM")
+    return "\n".join(lines)
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog=TOOL_NAME,
@@ -86,8 +109,14 @@ def build_parser() -> argparse.ArgumentParser:
                       help="With --live: serve from the cached OpenSky snapshot (air-gap).")
     scan.add_argument("--region", default=None, metavar="LAT0,LON0,LAT1,LON1",
                       help="With --live: clip ingest to a lat/lon bounding box.")
-    scan.add_argument("--format", choices=("table", "json", "geojson", "stix"), default="table",
-                      help="Output format: table/json, or geojson (mapping) / stix (TIPs).")
+    scan.add_argument("--format",
+                      choices=("table", "json", "geojson", "stix", "kml", "cot"),
+                      default="table",
+                      help="Output format: table/json, or geojson/kml (mapping), "
+                           "stix (TIPs), cot (ATAK/TAK).")
+    scan.add_argument("--zones", default=None, metavar="FILE",
+                      help="Offline restricted-airspace/NOTAM zone fixture (JSON) to "
+                           "check for incursions (adds airspace_incursion findings).")
     scan.add_argument("--loiter-radius", type=float, default=5.0,
                       metavar="NM",
                       help="Max track radius for loiter detection (default 5 NM).")
@@ -131,6 +160,33 @@ def build_parser() -> argparse.ArgumentParser:
                     help="Serve from the cached snapshot only (air-gap; no network).")
     fg.add_argument("--region", default=None, metavar="LAT0,LON0,LAT1,LON1",
                     help="Clip to a lat/lon bounding box.")
+
+    # Restricted-airspace / NOTAM incursion check against an OFFLINE zone fixture.
+    air = sub.add_parser(
+        "airspace",
+        help="Check an ADS-B feed against offline restricted-airspace/NOTAM zones "
+             "for incursions (defensive airspace monitoring).")
+    air.add_argument("feed", help="Path to ADS-B observation CSV file.")
+    air.add_argument("--zones", required=True, metavar="FILE",
+                     help="Restricted-zone fixture (JSON: circle/polygon zones).")
+    air.add_argument("--format", choices=("table", "json", "geojson", "kml", "cot"),
+                     default="table")
+
+    # Pattern-of-life analytics over the observation stream.
+    pat = sub.add_parser(
+        "patterns",
+        help="Pattern-of-life analytics: per-aircraft profiles and recurring "
+             "visits near a point of interest (descriptive, defensive).")
+    pat.add_argument("feed", help="Path to ADS-B observation CSV file.")
+    pat.add_argument("--poi", default=None, metavar="LAT,LON",
+                     help="Point of interest; report aircraft with recurring visits near it.")
+    pat.add_argument("--poi-radius", type=float, default=5.0, metavar="NM",
+                     help="Radius around the POI counting as a visit (default 5 NM).")
+    pat.add_argument("--poi-gap", type=float, default=3600.0, metavar="SEC",
+                     help="Absence gap separating distinct visits (default 3600 s).")
+    pat.add_argument("--min-visits", type=int, default=2, metavar="N",
+                     help="Min distinct visits to report an aircraft (default 2).")
+    pat.add_argument("--format", choices=("table", "json"), default="table")
     return p
 
 
@@ -148,7 +204,7 @@ def main(argv: Optional[list] = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
 
-    if args.command not in ("scan", "assess", "feeds"):
+    if args.command not in ("scan", "assess", "feeds", "airspace", "patterns"):
         parser.print_help()
         return 1
 
@@ -191,6 +247,44 @@ def main(argv: Optional[list] = None) -> int:
             print(f"error: failed to parse feed: {e}", file=sys.stderr)
             return 1
 
+    if args.command == "airspace":
+        from . import airspace
+        try:
+            zones = airspace.load_zones(args.zones)
+        except (OSError, ValueError) as e:
+            print(f"error: failed to read zones: {e}", file=sys.stderr)
+            return 1
+        incursions = airspace.detect_incursions(observations, zones)
+        result = AnalysisResult(observations=len(observations),
+                                aircraft=len({o.icao for o in observations}),
+                                anomalies=incursions)
+        if args.format in ("geojson", "kml", "cot"):
+            from . import intel
+            print(intel.export(result, args.format, observations=observations))
+        elif args.format == "json":
+            print(json.dumps(result.to_dict(), indent=2))
+        else:
+            print(_render_table(result))
+        return 2 if incursions else 0
+
+    if args.command == "patterns":
+        from . import patterns as patterns_mod
+        summary = patterns_mod.summarize(observations)
+        if args.poi:
+            try:
+                plat, plon = (float(x) for x in args.poi.split(","))
+            except ValueError:
+                print("error: --poi must be LAT,LON", file=sys.stderr)
+                return 1
+            summary["recurring_visits"] = patterns_mod.recurring_visits(
+                observations, plat, plon, radius_nm=args.poi_radius,
+                gap_s=args.poi_gap, min_visits=args.min_visits)
+        if args.format == "json":
+            print(json.dumps(summary, indent=2))
+        else:
+            print(_render_patterns(summary))
+        return 0
+
     if args.command == "assess":
         from . import decision
         result = analyze(observations)
@@ -216,7 +310,20 @@ def main(argv: Optional[list] = None) -> int:
         kinematics_max_speed_kt=getattr(args, "max_speed", DEFAULT_MAX_GROUND_SPEED_KT),
     )
 
-    if args.format in ("geojson", "stix"):
+    # Optional restricted-airspace incursion check folded into the scan output.
+    if getattr(args, "zones", None):
+        from . import airspace
+        try:
+            zones = airspace.load_zones(args.zones)
+        except (OSError, ValueError) as e:
+            print(f"error: failed to read zones: {e}", file=sys.stderr)
+            return 1
+        result.anomalies.extend(airspace.detect_incursions(observations, zones))
+        sev_rank = {"critical": 0, "high": 1, "medium": 2, "low": 3}
+        result.anomalies.sort(
+            key=lambda a: (sev_rank.get(a.severity, 9), a.timestamp, a.icao))
+
+    if args.format in ("geojson", "stix", "kml", "cot"):
         from . import intel
         print(intel.export(result, args.format, observations=observations))
     elif args.format == "json":

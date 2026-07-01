@@ -35,6 +35,10 @@ SCENARIOS = [
     "18_emergency_response",
     "19_cli_exit_codes",
     "20_spoof_combo",
+    "21_airspace_incursion",
+    "22_pattern_of_life",
+    "23_kml_export",
+    "24_cot_atak",
 ]
 
 
