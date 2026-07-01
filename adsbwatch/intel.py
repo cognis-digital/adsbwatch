@@ -26,7 +26,7 @@ _FALLBACK_TS = "2026-01-01T00:00:00.000Z"
 def _iso(epoch) -> str:
     try:
         return time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime(float(epoch)))
-    except (TypeError, ValueError, OSError):
+    except (TypeError, ValueError, OSError, OverflowError):
         return _FALLBACK_TS
 
 

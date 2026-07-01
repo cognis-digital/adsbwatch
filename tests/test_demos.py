@@ -20,6 +20,21 @@ SCENARIOS = [
     "03_force_protection",
     "04_intel_export",
     "05_live_feed_offline",
+    "06_impossible_kinematics",
+    "07_geojson_map",
+    "08_stix_tip",
+    "09_region_clip",
+    "10_airgap_snapshot",
+    "11_triage_queue",
+    "12_sensor_fusion",
+    "13_advisory_playbook",
+    "14_malformed_input",
+    "15_loiter_tuning",
+    "16_full_pipeline",
+    "17_clean_feed",
+    "18_emergency_response",
+    "19_cli_exit_codes",
+    "20_spoof_combo",
 ]
 
 
